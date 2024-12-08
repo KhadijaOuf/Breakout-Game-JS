@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@400..700&family=Jersey+25+Charted&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Tiny5&display=swap');
+    </style>
+    <style>
+        * {
+            padding: 0;
+            margin: 0;
+        }
+
+        canvas {
+            background: #3b3838;
+            display: block;
+            margin: 0 auto;
+            z-index: 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Original code source: https://github.com/end3r/Gamedev-Canvas-workshop/tree/gh-pages -->
+    <!-- Improved by KhadijaOuf -->
+
+
+    <canvas id="myCanvas" width="480" height="320"> </canvas>
+    <div id="rectangle">
+        <h1>Game Over</h1>
+    </div>
+    <style>
+        #rectangle {
+            position: absolute;
+            width: 200px;
+            height: 100px;
+            line-height: 100px;
+            color: aliceblue;
+            font-family: "Tiny5";
+            display: flex;
+            justify-content: center;
+            justify-items: center;
+            background-color: #3b3838;
+            border: 10px solid #f861f8d8;
+            margin: -220px 575px;
+            z-index: 10;
+            /* fonctionne si position: absolute;     */
+            visibility: hidden;
+        }
+    </style>
+
+
+
+    <!-- JavaScript code goes here -->
+    <script>
+        var canvas = document.getElementById("myCanvas");
+        var ctx = canvas.getContext("2d"); // pour stocker le contexte de rendu 2D — l'outil réel que nous pouvons utiliser pour peindre sur Canvas
+        const gameOver = document.getElementById("rectangle");
+
+        var x = canvas.width / 2;
+        var y = canvas.height - 30;
+
+        var dx = 2;
+        var dy = -2;
+
+        var ballRadius = 10;
+
+        /////////////////////// raquette :
+
+        var paddleHeight = 10;
+        var paddleWidth = 75;
+        var paddleX = (canvas.width - paddleWidth) / 2; // point de départ sur l'axe des x (left corner)
+
+        var rightPressed = false;   // les touches mémorisé dans des variables booléennes
+        var leftPressed = false;
+
+
+        /////////////////////// brick :
+
+        var brickRowCount = 4;
+        var brickColumnCount = 11;
+        var brickWidth = 30;
+        var brickHeight = 20;
+        var brickPadding = 10;
+        var brickOffsetTop = 30;
+        var brickOffsetLeft = 25;
+
+        var score = 0;
+        var lives = 3;
+        var isGameFinish = false;
+
+        var bricks = [];
+        for (var c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for (var r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { x: 0, y: 0, status: 1 };   // création de { x: 0, y: 0 } est un objet qui stocke les coordonnées d’une brique sur le canevas.
+                // Il n'est pas nécessaire de déclarer var x; ou var y; car vous ne créez pas de variables x et y mais des propriétés d'un objet.
+            }
+        }
+
+        // deux écouteurs d'événements, Pour être informé des appuis sur les touches.
+        // Lorsque l'événement keydown est déclenché par l'appui d'une des touches de votre clavier, la fonction keyDownHandler() est exécutée.
+        document.addEventListener("keydown", keyDownHandler, false);
+        document.addEventListener("keyup", keyUpHandler, false);
+
+        function keyDownHandler(e) {    // la touche est pressée
+            if (e.key == "Right" || e.key == "ArrowRight") {  // event.key : retourne la touche spécifique pressée ou relâchée par l'utilisateur 
+                rightPressed = true;
+            } else if (e.key == "Left" || e.key == "ArrowLeft") {
+                leftPressed = true;
+            }
+        }
+        function keyUpHandler(e) {
+            if (e.key == "Right" || e.key == "ArrowRight") {
+                rightPressed = false;
+            } else if (e.key == "Left" || e.key == "ArrowLeft") {
+                leftPressed = false;
+            }
+        }
+
+        /// mouse
+        document.addEventListener("mousemove", mouseMoveHandler, false);
+        function mouseMoveHandler(e) {
+            var relativeX = e.clientX - canvas.offsetLeft; // e.clientX :fait référence à la position horizontale (en pixels) du curseur de la souris
+            if (relativeX > 0 && relativeX < canvas.width) {
+                paddleX = relativeX - paddleWidth / 2;
+            }
+        }
+
+        // Audio :
+        const collisionBottom = new Audio('collisionBottom.mp3');
+        const eatBrick = new Audio('eatBrick.wav');
+        const win = new Audio('win.wav');
+        const lose = new Audio('lose.wav');
+
+
+
+
+        ////////////////////////////////////////////////////////////////////// Code :
+
+
+        function drawBall() {
+            ctx.beginPath(); // Démarre un nouveau chemin de dessin
+            ctx.arc(x, y, ballRadius, 0, Math.PI * 2, false); // false (faux) pour le sens des aiguilles d'une montre, la valeur par défaut, ou true (vrai) pour le sens inverse
+            ctx.fillStyle = "#fa4ffa"; //  stocke une couleur 
+            ctx.fill();
+            ctx.closePath(); //Ferme le chemin actuel en reliant automatiquement le dernier point du tracé au premier.
+        }
+
+        function drawPaddle() {
+            ctx.beginPath();
+            ctx.rect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
+            ctx.fillStyle = "#f8f2f2";
+            ctx.fill();
+            ctx.closePath();
+        }
+
+        function drawBricks() {
+            for (var c = 0; c < brickColumnCount; c++) {
+                for (var r = 0; r < brickRowCount; r++) {
+                    if (bricks[c][r].status == 1) {  // vérifier si la brique est toujours active avant de la dessiner.
+                        var brickX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
+                        var brickY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                        ctx.fillStyle = "#fff";
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+
+
+        function cornerLimit() {
+            if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {    // limite droit et gauche  
+                dx = -dx;
+            }
+
+            if (y + dy < ballRadius) {      // limite top 
+                dy = -dy;
+            } else if (y + dy > canvas.height - ballRadius) {  // la balle dépasse la hauteur de canva ( limit down )
+                if (x > paddleX && x < paddleX + paddleWidth) {    //     paddleX < x < paddleX + paddleWidth
+                    dy = -dy;
+                } else {
+                    collisionBottom.play();
+                    lives--;
+                    if (!lives) {
+                        isGameFinish = true;
+                        lose.play();
+                        gameOver.style.visibility = gameOver.style.visibility = "visible";
+                        setTimeout(() => {
+                            alert("Recommencer le jeu ?");
+                            document.location.reload(); // Recharge la page pour recommencer le jeu
+                        }, 2000);  // 2000 millisecondes (2 secondes) avant d'afficher l'alerte
+                        /* clearInterval(interval); // pour recommancer le jeu */
+                    } else {
+                        x = canvas.width / 2;
+                        y = canvas.height - 30;
+                        dx = 2;
+                        dy = -2;
+                        paddleX = (canvas.width - paddleWidth) / 2;
+                    }
+
+                }
+            }
+        }
+        function paddleLimit() {
+            if (rightPressed && paddleX < canvas.width - paddleWidth) {
+                paddleX += 4;
+            }
+            else if (leftPressed && paddleX > 0) {
+                paddleX -= 4;
+            }
+        }
+
+        function collisionDetection() {
+            for (var c = 0; c < brickColumnCount; c++) {
+                for (var r = 0; r < brickRowCount; r++) {
+                    var b = bricks[c][r];
+                    if (b.status == 1) {
+                        if (x > b.x && x < b.x + brickWidth && y > b.y && y < b.y + brickHeight) {
+                            dy = -dy;
+                            b.status = 0;
+                            eatBrick.play();
+                            score++;
+                            if (score == brickRowCount * brickColumnCount) {
+                                isGameFinish = true;
+                                win.play();
+                                gameOver.innerHTML = "<h1>You Won!</h1>";
+                                gameOver.style.visibility = gameOver.style.visibility = "visible";
+                                setTimeout(() => {
+                                    alert("Recommencer le jeu ?");
+                                    document.location.reload(); // Recharge la page pour recommencer le jeu ou actualiser une interface utilisateur
+                                }, 2000);  // 2000 millisecondes (2 secondes) avant d'afficher l'alerte
+                                // clearInterval(interval); // Needed for Chrome to end game
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function drawScore() {
+            ctx.font = "16px Tiny5";
+            ctx.fillStyle = "#fff";
+            ctx.fillText("Score: " + score, 20, 20);
+        }
+
+        function drawHeart(x, y, size) {
+            ctx.beginPath();
+            ctx.moveTo(x, y); // Point de départ
+            // Dessiner la courbe de Bézier pour le côté gauche du cœur
+            ctx.bezierCurveTo(x - size / 2, y - size / 2, x - size, y + size / 2, x, y + size);
+
+            // Dessiner la courbe de Bézier pour le côté droit du cœur
+            ctx.bezierCurveTo(x + size, y + size / 2, x + size / 2, y - size / 2, x, y);
+
+            // Remplir le cœur avec la couleur rouge
+            ctx.fillStyle = "red";
+            ctx.fill();
+
+            ctx.closePath(); // Fermer le chemin
+            ctx.closePath();
+
+        }
+
+
+        function drawLives() {
+            var heartSize = 15;
+            for (let i = 0; i < lives; i++) {
+                drawHeart(405 + i * (heartSize + 10), 9, heartSize); // Décale chaque cœur horizontalement
+            }
+        }
+
+        ///////////////////////// fonction draw :
+
+        function draw() {
+            if (isGameFinish) return;   // Arrête le dessin si le jeu est terminé
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBricks();
+            drawBall();
+            drawPaddle();
+            collisionDetection();
+            drawScore();
+            drawLives();
+            cornerLimit();
+            paddleLimit();
+
+            x += dx;
+            y += dy;
+            requestAnimationFrame(draw);  // ce qui fait que la fonction draw() s'appelle encore et encore :
+        }
+
+        draw();  // Lancement initial du jeu
+
+        // setInterval(draw, 10); //La fonction draw() sera exécutée toutes les 10 millisecondes, sans arrêt.
+
+    </script>
+
+</body>
+
+</html>
